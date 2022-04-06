@@ -1,0 +1,112 @@
+name: CI ARM
+on:
+  pull_request:
+  push:
+    branches:
+    - main
+jobs:
+  test:
+    strategy:
+      matrix:
+        rust: [stable, beta]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: true
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt
+        profile: minimal
+    - uses: arduino/setup-protoc@v1
+    - name: Set up QEMU
+      id: qemu
+      uses: docker/setup-qemu-action@v1
+    - name: Test
+      run:  |
+        docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+        arm64v8/ubuntu:latest \
+        bash -exc 'apt-get update && apt-get -y install curl wget sudo git && \
+        apt install -y rustc && \
+        uname -m && \
+        ./scripts/test.sh'
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: true
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt
+        profile: minimal
+    - uses: arduino/setup-protoc@v1
+    - uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check
+    - name: Set up QEMU
+      id: qemu
+      uses: docker/setup-qemu-action@v1
+    - name: Lint
+      run:   |
+        docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+        arm64v8/ubuntu:latest \
+        bash -exc 'apt-get update && apt-get -y install curl wget sudo git && \
+        apt install -y rustc && \
+        uname -m && \
+        ./scripts/lint.sh'
+  non-default-examples:
+    strategy:
+      matrix:
+        example: [examples/external-otlp-grpcio-async-std]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: true
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt
+        profile: minimal
+    - uses: arduino/setup-protoc@v1
+    - name: Set up QEMU
+      id: qemu
+      uses: docker/setup-qemu-action@v1
+    - name: Build
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+        arm64v8/ubuntu:latest \
+        bash -exc 'apt-get update && apt-get -y install curl wget sudo git && \
+        apt install -y rustc && \
+        uname -m && \
+        cd ${{ matrix.example }} && \
+        cargo build --verbose'
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: true
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: 1.49.0
+        override: true
+    - name: Set up QEMU
+      id: qemu
+      uses: docker/setup-qemu-action@v1    
+    - name: Run tests
+      run:  |
+        docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+        arm64v8/ubuntu:latest \
+        bash -exc 'apt-get update && apt-get -y install curl wget sudo git && \
+        apt install -y rustc && \
+        uname -m && \
+        cargo --version &&
+        cargo test --verbose --manifest-path=opentelemetry/Cargo.toml --features trace,metrics,rt-tokio,testing &&
+        cargo test --manifest-path=opentelemetry-jaeger/Cargo.toml --features rt-tokio &&
+        cargo test --manifest-path=opentelemetry-zipkin/Cargo.toml'      
